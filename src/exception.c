@@ -26,8 +26,8 @@ zend_class_entry* registerExceptionClass() {
   zend_class_entry ce, *classEntry;
 
   INIT_CLASS_ENTRY(ce, "SPI\\Exception", class_SPI_Exception_methods);
-  /* SPI\Exception extends \Error (zend_ce_error) */
-  classEntry = zend_register_internal_class_ex(&ce, zend_ce_error);
+  /* SPI\Exception extends \Exception (zend_ce_exception) */
+  classEntry = zend_register_internal_class_ex(&ce, zend_ce_exception);
 
   return classEntry;
 }

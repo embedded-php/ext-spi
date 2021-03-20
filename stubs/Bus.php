@@ -71,4 +71,36 @@ final class Bus {
    * @return int
    */
   public function getDelay(): int {}
+
+  /**
+   *
+   * @return bool
+   */
+  public function isChipSelectHigh(): bool {}
+
+  /**
+   *
+   * @return bool
+   */
+  public function isLsbFirst(): bool {}
+
+  /**
+   * Return if SI/SO signals are shared.
+   *
+   * @return bool
+   */
+  public function is3Wire(): bool {}
+
+  /**
+   * Return if is a loopback configuration.
+   *
+   * @return bool
+   */
+  public function isLoop(): bool {}
+
+  /**
+   *
+   * @return bool
+   */
+  public function isChipSelectDisabled(): bool {}
 }

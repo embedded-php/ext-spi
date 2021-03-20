@@ -21,6 +21,7 @@
 #include "bus.h"
 #include "phpspi.h"
 #include "phpspi_arginfo.h"
+#include "zend_exceptions.h"
 #include "zend_interfaces.h"
 #include "zend_object_handlers.h"
 
@@ -28,6 +29,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
@@ -72,7 +74,7 @@ static void busFreeObject(zend_object *obj) {
 
 /* custom unset($inst->prop) handler */
 static void unsetPropertyObjectHandler(zend_object *object, zend_string *offset, void **cache_slot) {
-  zend_throw_error(NULL, "Cannot unset SPI\\Bus property");
+  zend_throw_error(NULL, "Cannot unset SPI\\Bus::$%s property", ZSTR_VAL(offset));
 }
 
 /********************************/
@@ -206,10 +208,11 @@ zend_object *busCreateObject(zend_class_entry *zceClass) {
 PHP_METHOD(SPI_Bus, __construct) {
   zend_long busId;
   zend_long chipSelect;
-  zend_long mode = 0;
+  zend_long mode = SPI_MODE_0;
   zend_long bits = 8;
   zend_long speed = 1000000;
   zend_long delay = 0;
+  zend_long test;
   ZEND_PARSE_PARAMETERS_START(2, 6)
     Z_PARAM_LONG(busId)
     Z_PARAM_LONG(chipSelect)
@@ -223,66 +226,104 @@ PHP_METHOD(SPI_Bus, __construct) {
   busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
 
   char device[32];
-  snprintf(device, sizeof(device), "/dev/spidev%d.%d", busId, chipSelect);
+  if (snprintf(device, sizeof(device), "/dev/spidev%d.%d", busId, chipSelect) >= 32) {
+    zend_throw_exception_ex(zceException, 0, "The bus and/or the device number is invalid");
+
+    RETURN_THROWS();
+  }
+
+  if (mode < SPI_MODE_0) {
+    zend_throw_exception_ex(zceException, 0, "$mode must be greater than or equal to %d", SPI_MODE_0);
+
+    RETURN_THROWS();
+  }
+
+  if (mode > SPI_MODE_3) {
+    zend_throw_exception_ex(zceException, 0, "$mode must be less than or equal to %d", SPI_MODE_3);
+
+    RETURN_THROWS();
+  }
 
   if (access(device, F_OK) == -1) {
-    zend_throw_error(zceException, "Spi device was not found");
+    zend_throw_exception_ex(zceException, 0, "The spi device '%s' was not found", device);
 
     RETURN_THROWS();
   }
 
   busInstance->spiDescriptor = open(device, O_RDWR);
   if (busInstance->spiDescriptor < 0) {
-    zend_throw_error(zceException, "Failed to open spi device");
+    zend_throw_exception_ex(zceException, 0, "Failed to open the spi device '%s'", device);
 
     RETURN_THROWS();
   }
 
   int err;
+  errno = 0;
   err = ioctl(busInstance->spiDescriptor, SPI_IOC_WR_MODE, &mode);
   if (err < 0) {
     close(busInstance->spiDescriptor);
-    zend_throw_error(zceException, "Failed to change the SPI Mode");
+    zend_throw_exception_ex(zceException, errno, "Failed to change the SPI Mode: %s", strerror(errno));
 
     RETURN_THROWS();
   }
 
+  errno = 0;
   err = ioctl(busInstance->spiDescriptor, SPI_IOC_RD_MODE, &mode);
   if (err < 0) {
     close(busInstance->spiDescriptor);
-    zend_throw_error(zceException, "Failed to read the SPI Mode back");
+    zend_throw_exception_ex(zceException, errno, "Failed to read the SPI Mode back: %s", strerror(errno));
 
     RETURN_THROWS();
   }
 
+  errno = 0;
   err = ioctl(busInstance->spiDescriptor, SPI_IOC_WR_BITS_PER_WORD, &bits);
   if (err < 0) {
     close(busInstance->spiDescriptor);
-    zend_throw_error(zceException, "Failed to change the number of bits per word");
+    zend_throw_exception_ex(zceException, errno, "Failed to change the number of bits per word: %s", strerror(errno));
 
     RETURN_THROWS();
   }
 
-  err = ioctl(busInstance->spiDescriptor, SPI_IOC_RD_BITS_PER_WORD, &bits);
+  errno = 0;
+  test = 0;
+  err = ioctl(busInstance->spiDescriptor, SPI_IOC_RD_BITS_PER_WORD, &test);
   if (err < 0) {
     close(busInstance->spiDescriptor);
-    zend_throw_error(zceException, "Failed to read the number of bits per word back");
+    zend_throw_exception_ex(zceException, errno, "Failed to read the number of bits per word back: %s", strerror(errno));
 
     RETURN_THROWS();
   }
 
+  if (bits != test) {
+    close(busInstance->spiDescriptor);
+    zend_throw_exception_ex(zceException, errno, "SPI number of bits per word mismatch: %d x %d", bits, test);
+
+    RETURN_THROWS();
+  }
+
+  errno = 0;
   err = ioctl(busInstance->spiDescriptor, SPI_IOC_WR_MAX_SPEED_HZ, &speed);
   if (err < 0) {
     close(busInstance->spiDescriptor);
-    zend_throw_error(zceException, "Failed to change the max bus speed");
+    zend_throw_exception_ex(zceException, errno, "Failed to change the max bus speed: %s", strerror(errno));
 
     RETURN_THROWS();
   }
 
-  err = ioctl(busInstance->spiDescriptor, SPI_IOC_RD_MAX_SPEED_HZ, &speed);
+  errno = 0;
+  test = 0;
+  err = ioctl(busInstance->spiDescriptor, SPI_IOC_RD_MAX_SPEED_HZ, &test);
   if (err < 0) {
     close(busInstance->spiDescriptor);
-    zend_throw_error(zceException, "Failed to read the max bus speed back");
+    zend_throw_exception_ex(zceException, errno, "Failed to read the max bus speed back: %s", strerror(errno));
+
+    RETURN_THROWS();
+  }
+
+  if (speed != test) {
+    close(busInstance->spiDescriptor);
+    zend_throw_exception_ex(zceException, errno, "SPI max bus speed mismatch: %d x %d", speed, test);
 
     RETURN_THROWS();
   }
@@ -310,6 +351,7 @@ PHP_METHOD(SPI_Bus, write) {
   unsigned char *in;
 
   out = emalloc(numBytes);
+  in = emalloc(numBytes);
   int i = 0;
   ZEND_HASH_FOREACH_VAL(bytes, entry) {
     out[i++] = zval_get_long(entry);
@@ -323,17 +365,20 @@ PHP_METHOD(SPI_Bus, write) {
 
   memset(&spiBuffer, 0, sizeof(spiBuffer));
   spiBuffer.tx_buf = (unsigned long)out;
-  spiBuffer.rx_buf = NULL;
+  spiBuffer.rx_buf = (unsigned long)in;
   spiBuffer.len = numBytes;
   spiBuffer.delay_usecs = zval_get_long(delay);
 
-  if (ioctl(busInstance->spiDescriptor, SPI_IOC_MESSAGE(1), &spiBuffer) != numBytes) {
-    zend_throw_error(zceException, "Failed to write data on Bus");
+  errno = 0;
+  int ret = ioctl(busInstance->spiDescriptor, SPI_IOC_MESSAGE(1), &spiBuffer);
+  if (ret < 0) {
+    zend_throw_exception_ex(zceException, errno, "Failed to write data: %s", strerror(errno));
 
     RETURN_THROWS();
   }
 
   efree(out);
+  efree(in);
 }
 /* }}} */
 
@@ -422,5 +467,90 @@ PHP_METHOD(SPI_Bus, getDelay) {
   zval *delay = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "delay", sizeof("delay") - 1, true, &rv);
 
   RETURN_LONG(zval_get_long(delay));
+}
+/* }}} */
+
+/* {{{ SPI\Bus::isChipSelectHigh(): bool */
+PHP_METHOD(SPI_Bus, isChipSelectHigh) {
+  ZEND_PARSE_PARAMETERS_NONE();
+
+  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
+
+  zval rv;
+  zval *mode = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, true, &rv);
+
+  if (zval_get_long(mode) & SPI_CS_HIGH) {
+    RETURN_TRUE;
+  }
+
+  RETURN_FALSE;
+}
+/* }}} */
+
+/* {{{ SPI\Bus::isLsbFirst(): bool */
+PHP_METHOD(SPI_Bus, isLsbFirst) {
+  ZEND_PARSE_PARAMETERS_NONE();
+
+  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
+
+  zval rv;
+  zval *mode = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, true, &rv);
+
+  if (zval_get_long(mode) & SPI_LSB_FIRST) {
+    RETURN_TRUE;
+  }
+
+  RETURN_FALSE;
+}
+/* }}} */
+
+/* {{{ SPI\Bus::is3Wire(): bool */
+PHP_METHOD(SPI_Bus, is3Wire) {
+  ZEND_PARSE_PARAMETERS_NONE();
+
+  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
+
+  zval rv;
+  zval *mode = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, true, &rv);
+
+  if (zval_get_long(mode) & SPI_3WIRE) {
+    RETURN_TRUE;
+  }
+
+  RETURN_FALSE;
+}
+/* }}} */
+
+/* {{{ SPI\Bus::isLoop(): bool */
+PHP_METHOD(SPI_Bus, isLoop) {
+  ZEND_PARSE_PARAMETERS_NONE();
+
+  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
+
+  zval rv;
+  zval *mode = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, true, &rv);
+
+  if (zval_get_long(mode) & SPI_LOOP) {
+    RETURN_TRUE;
+  }
+
+  RETURN_FALSE;
+}
+/* }}} */
+
+/* {{{ SPI\Bus::isChipSelectDisabled(): bool */
+PHP_METHOD(SPI_Bus, isChipSelectDisabled) {
+  ZEND_PARSE_PARAMETERS_NONE();
+
+  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
+
+  zval rv;
+  zval *mode = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, true, &rv);
+
+  if (zval_get_long(mode) & SPI_NO_CS) {
+    RETURN_TRUE;
+  }
+
+  RETURN_FALSE;
 }
 /* }}} */

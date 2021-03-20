@@ -5,4 +5,4 @@ namespace SPI;
 /**
  * Base exception
  */
-class Exception extends \Error {}
+class Exception extends \Exception {}
