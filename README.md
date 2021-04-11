@@ -15,6 +15,15 @@ make
 make test
 ```
 
+## SPI Modes
+
+Mode | Constant   | Description
+-----|------------|------------
+00   | SPI\MODE_0 | Clock idle low, data valid at beginning of pulse (low to high)
+01   | SPI\MODE_1 | Clock idle low, data valid at end of pulse (high to low)
+10   | SPI\MODE_2 | Clock idle high, data valid at beginning of pulse (high to low)
+11   | SPI\MODE_3 | Clock idle high, data valid at end of pulse (low to high)
+
 ## Stubs
 
 After changing any of the [stubs](stubs/), the main [stub file](phpspi.stub.php) must be updated by running the command below.
@@ -41,6 +50,7 @@ Class                                | Description
 ## Resources
 
 - [https://www.raspberrypi.org/documentation/hardware/raspberrypi/spi/README.md](https://www.raspberrypi.org/documentation/hardware/raspberrypi/spi/README.md)
+- [https://github.com/topherCantrell/ER-OLEDM032-1](https://github.com/topherCantrell/ER-OLEDM032-1)
 
 ## Alternatives
 

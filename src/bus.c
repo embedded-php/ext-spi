@@ -38,7 +38,11 @@
 
 /* zend_object wrapper to ensure spi is handled properly */
 typedef struct _busObject {
-  long spiDescriptor;
+  int spiDescriptor;
+  uint8_t mode;
+  uint8_t bits;
+  uint32_t speed;
+  uint16_t delay;
   zend_object zendObject;
 } busObject;
 
@@ -62,7 +66,7 @@ static void busFreeObject(zend_object *obj) {
     return;
   }
 
-  /* if the spiDescriptor was open, close it */
+  /* if the fd was open, close it */
   if (busInstance->spiDescriptor >= 0) {
     close(busInstance->spiDescriptor);
     busInstance->spiDescriptor = -1;
@@ -75,6 +79,25 @@ static void busFreeObject(zend_object *obj) {
 /* custom unset($inst->prop) handler */
 static void unsetPropertyObjectHandler(zend_object *object, zend_string *offset, void **cache_slot) {
   zend_throw_error(NULL, "Cannot unset SPI\\Bus::$%s property", ZSTR_VAL(offset));
+}
+
+static int setSpiMode(int fd, uint8_t mode) {
+  uint8_t test;
+
+  errno = 0;
+  if (ioctl(fd, SPI_IOC_WR_MODE, &mode) < 0) {
+    return -1;
+  }
+
+  if (ioctl(fd, SPI_IOC_RD_MODE, &test) < 0) {
+    return -1;
+  }
+
+  if (test != mode) {
+    return -1;
+  }
+
+  return 0;
 }
 
 /********************************/
@@ -204,7 +227,7 @@ zend_object *busCreateObject(zend_class_entry *zceClass) {
 /* PHP Visible Methods          */
 /********************************/
 
-/* {{{ SPI\Bus::__construct(string $path): void */
+/* {{{ SPI\Bus::__construct(int $busId, int $chipSelect, int $mode = SPI\MODE_0,int $bits = 8, int $speed = 1000000, int $delay = 0): void */
 PHP_METHOD(SPI_Bus, __construct) {
   zend_long busId;
   zend_long chipSelect;
@@ -259,7 +282,8 @@ PHP_METHOD(SPI_Bus, __construct) {
 
   int err;
   errno = 0;
-  err = ioctl(busInstance->spiDescriptor, SPI_IOC_WR_MODE, &mode);
+  busInstance->mode = (uint8_t)mode;
+  err = ioctl(busInstance->spiDescriptor, SPI_IOC_WR_MODE, &busInstance->mode);
   if (err < 0) {
     close(busInstance->spiDescriptor);
     zend_throw_exception_ex(zceException, errno, "Failed to change the SPI Mode: %s", strerror(errno));
@@ -268,7 +292,7 @@ PHP_METHOD(SPI_Bus, __construct) {
   }
 
   errno = 0;
-  err = ioctl(busInstance->spiDescriptor, SPI_IOC_RD_MODE, &mode);
+  err = ioctl(busInstance->spiDescriptor, SPI_IOC_RD_MODE, &busInstance->mode);
   if (err < 0) {
     close(busInstance->spiDescriptor);
     zend_throw_exception_ex(zceException, errno, "Failed to read the SPI Mode back: %s", strerror(errno));
@@ -277,7 +301,8 @@ PHP_METHOD(SPI_Bus, __construct) {
   }
 
   errno = 0;
-  err = ioctl(busInstance->spiDescriptor, SPI_IOC_WR_BITS_PER_WORD, &bits);
+  busInstance->bits = (uint8_t)bits;
+  err = ioctl(busInstance->spiDescriptor, SPI_IOC_WR_BITS_PER_WORD, &busInstance->bits);
   if (err < 0) {
     close(busInstance->spiDescriptor);
     zend_throw_exception_ex(zceException, errno, "Failed to change the number of bits per word: %s", strerror(errno));
@@ -303,7 +328,8 @@ PHP_METHOD(SPI_Bus, __construct) {
   }
 
   errno = 0;
-  err = ioctl(busInstance->spiDescriptor, SPI_IOC_WR_MAX_SPEED_HZ, &speed);
+  busInstance->speed = (uint32_t)speed;
+  err = ioctl(busInstance->spiDescriptor, SPI_IOC_WR_MAX_SPEED_HZ, &busInstance->speed);
   if (err < 0) {
     close(busInstance->spiDescriptor);
     zend_throw_exception_ex(zceException, errno, "Failed to change the max bus speed: %s", strerror(errno));
@@ -328,75 +354,218 @@ PHP_METHOD(SPI_Bus, __construct) {
     RETURN_THROWS();
   }
 
+  busInstance->delay = (uint16_t)delay;
+
   /* update class property with constructor argument values */
   zend_update_property_long(zceBus, Z_OBJ_P(ZEND_THIS), "busId", sizeof("busId") - 1, busId);
   zend_update_property_long(zceBus, Z_OBJ_P(ZEND_THIS), "chipSelect", sizeof("chipSelect") - 1, chipSelect);
-  zend_update_property_long(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, mode);
-  zend_update_property_long(zceBus, Z_OBJ_P(ZEND_THIS), "bits", sizeof("bits") - 1, bits);
-  zend_update_property_long(zceBus, Z_OBJ_P(ZEND_THIS), "speed", sizeof("speed") - 1, speed);
-  zend_update_property_long(zceBus, Z_OBJ_P(ZEND_THIS), "delay", sizeof("delay") - 1, delay);
+  zend_update_property_long(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, busInstance->mode);
+  zend_update_property_long(zceBus, Z_OBJ_P(ZEND_THIS), "bits", sizeof("bits") - 1, busInstance->bits);
+  zend_update_property_long(zceBus, Z_OBJ_P(ZEND_THIS), "speed", sizeof("speed") - 1, busInstance->speed);
+  zend_update_property_long(zceBus, Z_OBJ_P(ZEND_THIS), "delay", sizeof("delay") - 1, busInstance->delay);
 }
 /* }}} */
 
-/* {{{ SPI\Bus::write(array $bytes): void */
+/* {{{ SPI\Bus::write(int ...$bytes): void */
 PHP_METHOD(SPI_Bus, write) {
-  HashTable *bytes;
-  zval *entry;
-  ZEND_PARSE_PARAMETERS_START(1, 1)
-    Z_PARAM_ARRAY_HT(bytes)
+  zval *args;
+  int argc;
+  ZEND_PARSE_PARAMETERS_START(1, -1)
+    Z_PARAM_VARIADIC('+', args, argc)
   ZEND_PARSE_PARAMETERS_END();
 
-  int numBytes = zend_hash_num_elements(bytes);
-  unsigned char *out;
-  unsigned char *in;
+  unsigned char *txBuffer;
+  txBuffer = emalloc(argc);
+  memset(txBuffer, 0, sizeof(unsigned char) * argc);
 
-  out = emalloc(numBytes);
-  in = emalloc(numBytes);
-  int i = 0;
-  ZEND_HASH_FOREACH_VAL(bytes, entry) {
-    out[i++] = zval_get_long(entry);
-  } ZEND_HASH_FOREACH_END();
+  for (int i = 0; i < argc; i++) {
+    zval *arg = args + i;
+    txBuffer[i] = zval_get_long(arg);
+  }
 
   busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
-  zval rv;
-  zval *delay = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "delay", sizeof("delay") - 1, true, &rv);
 
   struct spi_ioc_transfer spiBuffer;
 
   memset(&spiBuffer, 0, sizeof(spiBuffer));
-  spiBuffer.tx_buf = (unsigned long)out;
-  spiBuffer.rx_buf = (unsigned long)in;
-  spiBuffer.len = numBytes;
-  spiBuffer.delay_usecs = zval_get_long(delay);
+  spiBuffer.tx_buf = (unsigned long)txBuffer;
+  spiBuffer.len = argc;
+  spiBuffer.bits_per_word = busInstance->bits;
+  spiBuffer.speed_hz = busInstance->speed;
+  spiBuffer.delay_usecs = busInstance->delay;
+
+  if (busInstance->mode & SPI_TX_QUAD) {
+    spiBuffer.tx_nbits = 4;
+  } else if (busInstance->mode & SPI_TX_DUAL) {
+    spiBuffer.tx_nbits = 2;
+  }
+
+  if (busInstance->mode & SPI_RX_QUAD) {
+    spiBuffer.rx_nbits = 4;
+  } else if (busInstance->mode & SPI_RX_DUAL) {
+    spiBuffer.rx_nbits = 2;
+  }
+
+  if (! (busInstance->mode & SPI_LOOP)) {
+    if (busInstance->mode & (SPI_TX_QUAD | SPI_TX_DUAL)) {
+      spiBuffer.rx_buf = 0;
+    } else if (busInstance->mode & (SPI_RX_QUAD | SPI_RX_DUAL)) {
+      spiBuffer.tx_buf = 0;
+    }
+  }
 
   errno = 0;
   int ret = ioctl(busInstance->spiDescriptor, SPI_IOC_MESSAGE(1), &spiBuffer);
-  if (ret < 0) {
+  efree(txBuffer);
+  if (ret < 1) {
     zend_throw_exception_ex(zceException, errno, "Failed to write data: %s", strerror(errno));
 
     RETURN_THROWS();
   }
-
-  efree(out);
-  efree(in);
 }
 /* }}} */
 
-/* {{{ SPI\Bus::read(): array */
+/* {{{ SPI\Bus::read(int $numBytes): array */
 PHP_METHOD(SPI_Bus, read) {
-  ZEND_PARSE_PARAMETERS_NONE();
+  zend_long numBytes;
+  ZEND_PARSE_PARAMETERS_START(1, 1)
+    Z_PARAM_LONG(numBytes)
+  ZEND_PARSE_PARAMETERS_END();
+
+  unsigned char *rxBuffer;
+  rxBuffer = emalloc(numBytes);
+  memset(rxBuffer, 0, sizeof(unsigned char) * numBytes);
 
   busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
 
-  RETURN_EMPTY_ARRAY();
+  struct spi_ioc_transfer spiBuffer;
+
+  memset(&spiBuffer, 0, sizeof(spiBuffer));
+  spiBuffer.rx_buf = (unsigned long)rxBuffer;
+  spiBuffer.len = numBytes;
+  spiBuffer.bits_per_word = busInstance->bits;
+  spiBuffer.speed_hz = busInstance->speed;
+  spiBuffer.delay_usecs = busInstance->delay;
+
+  if (busInstance->mode & SPI_TX_QUAD) {
+    spiBuffer.tx_nbits = 4;
+  } else if (busInstance->mode & SPI_TX_DUAL) {
+    spiBuffer.tx_nbits = 2;
+  }
+
+  if (busInstance->mode & SPI_RX_QUAD) {
+    spiBuffer.rx_nbits = 4;
+  } else if (busInstance->mode & SPI_RX_DUAL) {
+    spiBuffer.rx_nbits = 2;
+  }
+
+  if (! (busInstance->mode & SPI_LOOP)) {
+    if (busInstance->mode & (SPI_TX_QUAD | SPI_TX_DUAL)) {
+      spiBuffer.rx_buf = 0;
+    } else if (busInstance->mode & (SPI_RX_QUAD | SPI_RX_DUAL)) {
+      spiBuffer.tx_buf = 0;
+    }
+  }
+
+  errno = 0;
+  int ret = ioctl(busInstance->spiDescriptor, SPI_IOC_MESSAGE(1), &spiBuffer);
+  if (ret < 1) {
+    zend_throw_exception_ex(zceException, errno, "Failed to read data: %s", strerror(errno));
+    efree(rxBuffer);
+
+    RETURN_THROWS();
+  }
+
+  zval zv;
+  array_init_size(&zv, numBytes);
+  for (int i = 0; i < numBytes; i++) {
+    add_next_index_long(&zv, rxBuffer[i]);
+  }
+
+  efree(rxBuffer);
+
+  RETURN_ARR(Z_ARRVAL(zv));
+}
+/* }}} */
+
+/* {{{ SPI\Bus::transfer(int ...$bytes): array */
+PHP_METHOD(SPI_Bus, transfer) {
+  zval *args;
+  int argc;
+  ZEND_PARSE_PARAMETERS_START(1, -1)
+    Z_PARAM_VARIADIC('+', args, argc)
+  ZEND_PARSE_PARAMETERS_END();
+
+  unsigned char *txBuffer;
+  txBuffer = emalloc(argc);
+  memset(txBuffer, 0, sizeof(unsigned char) * argc);
+
+  unsigned char *rxBuffer;
+  rxBuffer = emalloc(argc);
+  memset(rxBuffer, 0, sizeof(unsigned char) * argc);
+
+  for (int i = 0; i < argc; i++) {
+    zval *arg = args + i;
+    txBuffer[i] = zval_get_long(arg);
+  }
+
+  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
+
+  struct spi_ioc_transfer spiBuffer;
+
+  memset(&spiBuffer, 0, sizeof(spiBuffer));
+  spiBuffer.tx_buf = (unsigned long)txBuffer;
+  spiBuffer.rx_buf = (unsigned long)rxBuffer;
+  spiBuffer.len = argc;
+  spiBuffer.bits_per_word = busInstance->bits;
+  spiBuffer.speed_hz = busInstance->speed;
+  spiBuffer.delay_usecs = busInstance->delay;
+
+  if (busInstance->mode & SPI_TX_QUAD) {
+    spiBuffer.tx_nbits = 4;
+  } else if (busInstance->mode & SPI_TX_DUAL) {
+    spiBuffer.tx_nbits = 2;
+  }
+
+  if (busInstance->mode & SPI_RX_QUAD) {
+    spiBuffer.rx_nbits = 4;
+  } else if (busInstance->mode & SPI_RX_DUAL) {
+    spiBuffer.rx_nbits = 2;
+  }
+
+  if (! (busInstance->mode & SPI_LOOP)) {
+    if (busInstance->mode & (SPI_TX_QUAD | SPI_TX_DUAL)) {
+      spiBuffer.rx_buf = 0;
+    } else if (busInstance->mode & (SPI_RX_QUAD | SPI_RX_DUAL)) {
+      spiBuffer.tx_buf = 0;
+    }
+  }
+
+  errno = 0;
+  int ret = ioctl(busInstance->spiDescriptor, SPI_IOC_MESSAGE(1), &spiBuffer);
+  efree(txBuffer);
+  if (ret < 1) {
+    zend_throw_exception_ex(zceException, errno, "Failed to write data: %s", strerror(errno));
+    efree(rxBuffer);
+
+    RETURN_THROWS();
+  }
+
+  zval zv;
+  array_init_size(&zv, argc);
+  for (int i = 0; i < argc; i++) {
+    add_next_index_long(&zv, rxBuffer[i]);
+  }
+
+  efree(rxBuffer);
+
+  RETURN_ARR(Z_ARRVAL(zv));
 }
 /* }}} */
 
 /* {{{ SPI\Bus::getBusId(): int */
 PHP_METHOD(SPI_Bus, getBusId) {
   ZEND_PARSE_PARAMETERS_NONE();
-
-  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
 
   zval rv;
   zval *busId = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "busId", sizeof("busId") - 1, true, &rv);
@@ -409,8 +578,6 @@ PHP_METHOD(SPI_Bus, getBusId) {
 PHP_METHOD(SPI_Bus, getChipSelect) {
   ZEND_PARSE_PARAMETERS_NONE();
 
-  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
-
   zval rv;
   zval *chipSelect = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "chipSelect", sizeof("chipSelect") - 1, true, &rv);
 
@@ -422,20 +589,16 @@ PHP_METHOD(SPI_Bus, getChipSelect) {
 PHP_METHOD(SPI_Bus, getMode) {
   ZEND_PARSE_PARAMETERS_NONE();
 
-  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
-
   zval rv;
   zval *mode = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, true, &rv);
 
-  RETURN_LONG(zval_get_long(mode));
+  RETURN_LONG(zval_get_long(mode) & (SPI_CPHA | SPI_CPOL));
 }
 /* }}} */
 
 /* {{{ SPI\Bus::getBitsPerWord(): int */
 PHP_METHOD(SPI_Bus, getBitsPerWord) {
   ZEND_PARSE_PARAMETERS_NONE();
-
-  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
 
   zval rv;
   zval *bits = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "bits", sizeof("bits") - 1, true, &rv);
@@ -448,8 +611,6 @@ PHP_METHOD(SPI_Bus, getBitsPerWord) {
 PHP_METHOD(SPI_Bus, getSpeed) {
   ZEND_PARSE_PARAMETERS_NONE();
 
-  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
-
   zval rv;
   zval *speed = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "speed", sizeof("speed") - 1, true, &rv);
 
@@ -460,8 +621,6 @@ PHP_METHOD(SPI_Bus, getSpeed) {
 /* {{{ SPI\Bus::getDelay(): int */
 PHP_METHOD(SPI_Bus, getDelay) {
   ZEND_PARSE_PARAMETERS_NONE();
-
-  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
 
   zval rv;
   zval *delay = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "delay", sizeof("delay") - 1, true, &rv);
@@ -474,8 +633,6 @@ PHP_METHOD(SPI_Bus, getDelay) {
 PHP_METHOD(SPI_Bus, isChipSelectHigh) {
   ZEND_PARSE_PARAMETERS_NONE();
 
-  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
-
   zval rv;
   zval *mode = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, true, &rv);
 
@@ -487,11 +644,33 @@ PHP_METHOD(SPI_Bus, isChipSelectHigh) {
 }
 /* }}} */
 
+/* {{{ SPI\Bus::setChipSelectHigh(bool $enabled): void */
+PHP_METHOD(SPI_Bus, setChipSelectHigh) {
+  bool enabled;
+  ZEND_PARSE_PARAMETERS_START(1, 1)
+    Z_PARAM_BOOL(enabled)
+  ZEND_PARSE_PARAMETERS_END();
+
+  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
+
+  busInstance->mode &= ~SPI_CS_HIGH;
+  if (enabled) {
+    busInstance->mode |= SPI_CS_HIGH;
+  }
+
+  if (setSpiMode(busInstance->spiDescriptor, busInstance->mode) < 0) {
+    zend_throw_exception_ex(zceException, errno, "Failed to set mode: %s", strerror(errno));
+
+    RETURN_THROWS();
+  }
+
+  zend_update_property_long(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, busInstance->mode);
+}
+/* }}} */
+
 /* {{{ SPI\Bus::isLsbFirst(): bool */
 PHP_METHOD(SPI_Bus, isLsbFirst) {
   ZEND_PARSE_PARAMETERS_NONE();
-
-  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
 
   zval rv;
   zval *mode = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, true, &rv);
@@ -504,11 +683,33 @@ PHP_METHOD(SPI_Bus, isLsbFirst) {
 }
 /* }}} */
 
+/* {{{ SPI\Bus::setLsbFirst(bool $enabled): void */
+PHP_METHOD(SPI_Bus, setLsbFirst) {
+  bool enabled;
+  ZEND_PARSE_PARAMETERS_START(1, 1)
+    Z_PARAM_BOOL(enabled)
+  ZEND_PARSE_PARAMETERS_END();
+
+  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
+
+  busInstance->mode &= ~SPI_LSB_FIRST;
+  if (enabled) {
+    busInstance->mode |= SPI_LSB_FIRST;
+  }
+
+  if (setSpiMode(busInstance->spiDescriptor, busInstance->mode) < 0) {
+    zend_throw_exception_ex(zceException, errno, "Failed to set mode: %s", strerror(errno));
+
+    RETURN_THROWS();
+  }
+
+  zend_update_property_long(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, busInstance->mode);
+}
+/* }}} */
+
 /* {{{ SPI\Bus::is3Wire(): bool */
 PHP_METHOD(SPI_Bus, is3Wire) {
   ZEND_PARSE_PARAMETERS_NONE();
-
-  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
 
   zval rv;
   zval *mode = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, true, &rv);
@@ -521,11 +722,33 @@ PHP_METHOD(SPI_Bus, is3Wire) {
 }
 /* }}} */
 
+/* {{{ SPI\Bus::set3Wire(bool $enabled): void */
+PHP_METHOD(SPI_Bus, set3Wire) {
+  bool enabled;
+  ZEND_PARSE_PARAMETERS_START(1, 1)
+    Z_PARAM_BOOL(enabled)
+  ZEND_PARSE_PARAMETERS_END();
+
+  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
+
+  busInstance->mode &= ~SPI_3WIRE;
+  if (enabled) {
+    busInstance->mode |= SPI_3WIRE;
+  }
+
+  if (setSpiMode(busInstance->spiDescriptor, busInstance->mode) < 0) {
+    zend_throw_exception_ex(zceException, errno, "Failed to set mode: %s", strerror(errno));
+
+    RETURN_THROWS();
+  }
+
+  zend_update_property_long(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, busInstance->mode);
+}
+/* }}} */
+
 /* {{{ SPI\Bus::isLoop(): bool */
 PHP_METHOD(SPI_Bus, isLoop) {
   ZEND_PARSE_PARAMETERS_NONE();
-
-  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
 
   zval rv;
   zval *mode = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, true, &rv);
@@ -538,11 +761,33 @@ PHP_METHOD(SPI_Bus, isLoop) {
 }
 /* }}} */
 
+/* {{{ SPI\Bus::setLoop(bool $enabled): void */
+PHP_METHOD(SPI_Bus, setLoop) {
+  bool enabled;
+  ZEND_PARSE_PARAMETERS_START(1, 1)
+    Z_PARAM_BOOL(enabled)
+  ZEND_PARSE_PARAMETERS_END();
+
+  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
+
+  busInstance->mode &= ~SPI_LOOP;
+  if (enabled) {
+    busInstance->mode |= SPI_LOOP;
+  }
+
+  if (setSpiMode(busInstance->spiDescriptor, busInstance->mode) < 0) {
+    zend_throw_exception_ex(zceException, errno, "Failed to set mode: %s", strerror(errno));
+
+    RETURN_THROWS();
+  }
+
+  zend_update_property_long(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, busInstance->mode);
+}
+/* }}} */
+
 /* {{{ SPI\Bus::isChipSelectDisabled(): bool */
 PHP_METHOD(SPI_Bus, isChipSelectDisabled) {
   ZEND_PARSE_PARAMETERS_NONE();
-
-  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
 
   zval rv;
   zval *mode = zend_read_property(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, true, &rv);
@@ -552,5 +797,29 @@ PHP_METHOD(SPI_Bus, isChipSelectDisabled) {
   }
 
   RETURN_FALSE;
+}
+/* }}} */
+
+/* {{{ SPI\Bus::setChipSelectDisabled(bool $enabled): void */
+PHP_METHOD(SPI_Bus, setChipSelectDisabled) {
+  bool enabled;
+  ZEND_PARSE_PARAMETERS_START(1, 1)
+    Z_PARAM_BOOL(enabled)
+  ZEND_PARSE_PARAMETERS_END();
+
+  busObject *busInstance = getBusObject(Z_OBJ_P(ZEND_THIS));
+
+  busInstance->mode &= ~SPI_NO_CS;
+  if (enabled) {
+    busInstance->mode |= SPI_NO_CS;
+  }
+
+  if (setSpiMode(busInstance->spiDescriptor, busInstance->mode) < 0) {
+    zend_throw_exception_ex(zceException, errno, "Failed to set mode: %s", strerror(errno));
+
+    RETURN_THROWS();
+  }
+
+  zend_update_property_long(zceBus, Z_OBJ_P(ZEND_THIS), "mode", sizeof("mode") - 1, busInstance->mode);
 }
 /* }}} */
