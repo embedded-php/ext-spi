@@ -15,14 +15,14 @@
 */
 
 #ifdef HAVE_CONFIG_H
-#include "config.h"
+  #include "config.h"
 #endif
 
 #include "exception.h"
-#include "phpspi_arginfo.h"
+#include "spi_arginfo.h"
 #include "zend_exceptions.h"
 
-zend_class_entry* registerExceptionClass() {
+zend_class_entry* registerExceptionClass(void) {
   zend_class_entry ce, *classEntry;
 
   INIT_CLASS_ENTRY(ce, "SPI\\Exception", class_SPI_Exception_methods);

@@ -1,10 +1,16 @@
 # phpspi
 
-Object-oriented PHP bindings for the [SPI](https://en.wikipedia.org/wiki/Serial_Peripheral_Interface) protocol using the [spidev](https://www.kernel.org/doc/Documentation/spi/spidev) linux kernel driver
+The SPI PHP Extension provides an object-oriented wrapper to the
+[spidev](https://www.kernel.org/doc/Documentation/spi/spidev) Linux Kernel driver that gives users the ability to write
+code that interacts with external hardware using the [SPI](https://en.wikipedia.org/wiki/Serial_Peripheral_Interface)
+protocol.
 
 ## Requirements
 
-- PHP >= 8.0 (either NTS or TS version);
+- PHP >= 8.0 (either NTS or ZTS version);
+
+> **Note:** if you are using this extension on Raspbian or Raspberry Pi OS, the user executing the script **must**
+> belong to the **spi** group or you may run into "Permission denied" errors.
 
 ## Building
 
@@ -34,7 +40,7 @@ php stubs/update-main-stup.php
 
 Once the stub is updated, the regular build process can be executed.
 
-**Note:** The main stub file ([phpspi.stub.php](phpspi.stub.php)) is a generated file, edit the files on the [stubs](stubs/) folder instead.
+> **Note:** The main stub file ([phpspi.stub.php](phpspi.stub.php)) is a generated file, edit the files on the [stubs](stubs/) folder instead.
 
 ## Constants
 
@@ -49,8 +55,8 @@ Class                                | Description
 
 ## Resources
 
-- [https://www.raspberrypi.org/documentation/hardware/raspberrypi/spi/README.md](https://www.raspberrypi.org/documentation/hardware/raspberrypi/spi/README.md)
-- [https://github.com/topherCantrell/ER-OLEDM032-1](https://github.com/topherCantrell/ER-OLEDM032-1)
+- https://www.raspberrypi.org/documentation/hardware/raspberrypi/spi/README.md
+- https://github.com/topherCantrell/ER-OLEDM032-1
 
 ## Alternatives
 

@@ -1,16 +1,20 @@
-dnl config.m4 for extension phpspi
+dnl config.m4 for extension spi
 
-PHP_ARG_WITH(
-  [phpspi],
-  [for phpspi support],
-  [AS_HELP_STRING(
-    [--with-phpspi],
-    [Include phpspi support]
-  )]
+PHP_ARG_ENABLE(
+  spi,
+  whether to enable spi support,
+  [
+    AS_HELP_STRING(
+      [ --enable-spi ],
+      [ Include spi support ]
+    )
+  ],
+  yes,
+  yes
 )
 
-if test "$PHP_PHPSPI" != "no"; then
-  AC_DEFINE(HAVE_PHPSPI, 1, [ Have phpspi support ])
+if test "$PHP_SPI" != "no"; then
+  AC_DEFINE(HAVE_SPI, 1, [ Have spi support ])
 
-  PHP_NEW_EXTENSION(phpspi, phpspi.c src/bus.c src/exception.c, $ext_shared)
+  PHP_NEW_EXTENSION(spi, spi.c src/bus.c src/exception.c, $ext_shared)
 fi

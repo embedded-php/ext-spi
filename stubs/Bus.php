@@ -4,12 +4,14 @@ namespace SPI;
 
 final class Bus {
   /**
-   * @param int $busId SPI bus id
+   * Opens the SPI Bus.
+   *
+   * @param int $busId      SPI bus id
    * @param int $chipSelect
-   * @param int $mode SPI mode (SPI_MODE_0..3)
-   * @param int $bits Number of bits per word
-   * @param int $speed Bus speed in Hz
-   * @param int $delay Delay between sending each bit
+   * @param int $mode       SPI mode (SPI_MODE_0..3)
+   * @param int $bits       Number of bits per word
+   * @param int $speed      Bus speed in Hz
+   * @param int $delay      Delay between sending each bit
    *
    * @return void
    */
@@ -25,7 +27,7 @@ final class Bus {
   /**
    * Send the $bytes array to device.
    *
-   * @param int[] $bytes
+   * @param int[] $bytes Bytes to be sent
    *
    * @return void
    */
@@ -43,13 +45,15 @@ final class Bus {
   /**
    * Send the $bytes array to device and read back the same amount of bytes from it.
    *
-   * @param int[] $bytes
+   * @param int[] $bytes Bytes to be sent
    *
    * @return int[]
    */
   public function transfer(int ...$bytes): array {}
 
   /**
+   * Return the SPI bus id.
+   *
    * @return int
    */
   public function getBusId(): int {}
@@ -60,21 +64,29 @@ final class Bus {
   public function getChipSelect(): int {}
 
   /**
+   * Return the SPI mode.
+   *
    * @return int
    */
   public function getMode(): int {}
 
   /**
+   * Return the number of bits per word.
+   *
    * @return int
    */
   public function getBitsPerWord(): int {}
 
   /**
+   * Return the bus speed in Hz.
+   *
    * @return int
    */
   public function getSpeed(): int {}
 
   /**
+   * Return the delay between sending each bit.
+   *
    * @return int
    */
   public function getDelay(): int {}

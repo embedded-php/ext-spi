@@ -14,19 +14,19 @@
    +----------------------------------------------------------------------+
 */
 
-#ifndef PHP_PHPSPI_H
-#define PHP_PHPSPI_H
+#ifndef PHP_SPI_H
+#define PHP_SPI_H
 
-  extern zend_module_entry phpgpio_module_entry;
-  #define phpext_phpgpio_ptr &phpgpio_module_entry
+  extern zend_module_entry spi_module_entry;
+  #define phpext_spi_ptr &spi_module_entry
 
-  #define PHP_PHPSPI_EXTNAME   "phpspi"
-  #define PHP_PHPSPI_VERSION   "0.0.1-dev"
-  #define PHP_PHPSPI_AUTHOR    "flavioheleno"
-  #define PHP_PHPSPI_URL       "https://github.com/flavioheleno/phpspi"
-  #define PHP_PHPSPI_COPYRIGHT "Copyright (c) 2021"
+  #define PHP_SPI_EXTNAME   "phpspi"
+  #define PHP_SPI_VERSION   "0.0.1-dev"
+  #define PHP_SPI_AUTHOR    "flavioheleno"
+  #define PHP_SPI_URL       "https://github.com/flavioheleno/phpspi"
+  #define PHP_SPI_COPYRIGHT "Copyright (c) 2021"
 
-  #if defined(ZTS) && defined(COMPILE_DL_PHPSPI)
+  #if defined(ZTS) && defined(COMPILE_DL_SPI)
     ZEND_TSRMLS_CACHE_EXTERN()
   #endif
 

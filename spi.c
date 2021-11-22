@@ -20,8 +20,8 @@
 
 #include "php.h"
 #include "ext/standard/info.h"
-#include "phpspi.h"
-#include "phpspi_arginfo.h"
+#include "spi.h"
+#include "spi_arginfo.h"
 
 #include "src/bus.h"
 #include "src/exception.h"
@@ -40,8 +40,8 @@ zend_class_entry *zceBus;
 zend_class_entry *zceException;
 
 /* {{{ PHP_RINIT_FUNCTION */
-PHP_RINIT_FUNCTION(phpspi) {
-  #if defined(ZTS) && defined(COMPILE_DL_PHPSPI)
+PHP_RINIT_FUNCTION(spi) {
+  #if defined(ZTS) && defined(COMPILE_DL_SPI)
     ZEND_TSRMLS_CACHE_UPDATE();
   #endif
 
@@ -50,9 +50,9 @@ PHP_RINIT_FUNCTION(phpspi) {
 /* }}} */
 
 /* {{{ PHP_MINIT_FUNCTION */
-PHP_MINIT_FUNCTION(phpspi) {
+PHP_MINIT_FUNCTION(spi) {
   /* Extension constants */
-  REGISTER_STRING_CONSTANT("SPI\\EXTENSION_VERSION", PHP_PHPSPI_VERSION, CONST_CS | CONST_PERSISTENT);
+  REGISTER_STRING_CONSTANT("SPI\\EXTENSION_VERSION", PHP_SPI_VERSION, CONST_CS | CONST_PERSISTENT);
   REGISTER_LONG_CONSTANT("SPI\\CPHA", SPI_CPHA, CONST_CS | CONST_PERSISTENT);
   REGISTER_LONG_CONSTANT("SPI\\CPOL", SPI_CPOL, CONST_CS | CONST_PERSISTENT);
   REGISTER_LONG_CONSTANT("SPI\\MODE_0", (0 | 0), CONST_CS | CONST_PERSISTENT);
@@ -69,32 +69,32 @@ PHP_MINIT_FUNCTION(phpspi) {
 /* }}} */
 
 /* {{{ PHP_MINFO_FUNCTION */
-PHP_MINFO_FUNCTION(phpspi) {
+PHP_MINFO_FUNCTION(spi) {
   php_info_print_table_start();
-  php_info_print_table_header(2, "phpspi support", "enabled");
-  php_info_print_table_row(2, "Extension version", PHP_PHPSPI_VERSION);
+  php_info_print_table_header(2, "spi support", "enabled");
+  php_info_print_table_row(2, "Extension version", PHP_SPI_VERSION);
   php_info_print_table_end();
 }
 /* }}} */
 
-/* {{{ phpspi_module_entry */
-zend_module_entry phpspi_module_entry = {
+/* {{{ spi_module_entry */
+zend_module_entry spi_module_entry = {
   STANDARD_MODULE_HEADER,
-  PHP_PHPSPI_EXTNAME, /* Extension name */
-  NULL,               /* zend_function_entry */
-  PHP_MINIT(phpspi),  /* PHP_MINIT - Module initialization */
-  NULL,               /* PHP_MSHUTDOWN - Module shutdown */
-  PHP_RINIT(phpspi),  /* PHP_RINIT - Request initialization */
-  NULL,               /* PHP_RSHUTDOWN - Request shutdown */
-  PHP_MINFO(phpspi),  /* PHP_MINFO - Module info */
-  PHP_PHPSPI_VERSION, /* Version */
+  PHP_SPI_EXTNAME, /* Extension name */
+  NULL,            /* zend_function_entry */
+  PHP_MINIT(spi),  /* PHP_MINIT - Module initialization */
+  NULL,            /* PHP_MSHUTDOWN - Module shutdown */
+  PHP_RINIT(spi),  /* PHP_RINIT - Request initialization */
+  NULL,            /* PHP_RSHUTDOWN - Request shutdown */
+  PHP_MINFO(spi),  /* PHP_MINFO - Module info */
+  PHP_SPI_VERSION, /* Version */
   STANDARD_MODULE_PROPERTIES
 };
 /* }}} */
 
-#ifdef COMPILE_DL_PHPSPI
+#ifdef COMPILE_DL_SPI
   #ifdef ZTS
     ZEND_TSRMLS_CACHE_DEFINE()
   #endif
-  ZEND_GET_MODULE(phpspi)
+  ZEND_GET_MODULE(spi)
 #endif

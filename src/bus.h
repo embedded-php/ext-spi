@@ -14,8 +14,8 @@
    +----------------------------------------------------------------------+
 */
 
-#ifndef PHPSPI_BUS_H
-#define PHPSPI_BUS_H
+#ifndef SPI_BUS_H
+#define SPI_BUS_H
 
   #include "php.h"
 
@@ -25,7 +25,7 @@
   typedef struct _busObject busObject;
 
   /* class registration */
-  extern zend_class_entry* registerBusClass();
+  extern zend_class_entry* registerBusClass(void);
 
   /* handle busObject creation */
   extern zend_object *busCreateObject(zend_class_entry *zceClass);

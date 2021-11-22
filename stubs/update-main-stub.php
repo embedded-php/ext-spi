@@ -1,5 +1,7 @@
 <?php
 
+define('BASE_NAME', 'spi');
+
 try {
   // hold a reference to the script name
   $self = basename($argv[0]);
@@ -28,7 +30,7 @@ try {
   }
 
   // open a temporary file to be used during content processing
-  $tmpFile = tempnam(sys_get_temp_dir(), 'phpspi');
+  $tmpFile = tempnam(sys_get_temp_dir(), sprintf('php%s', BASE_NAME));
   $handle = fopen($tmpFile, 'w');
   assert(
     is_resource($handle),
@@ -41,6 +43,8 @@ try {
   // guarantee the final stub generated will be consistent
   ksort($stubFiles);
 
+  // global namespace
+  $namespace = '';
   foreach ($stubFiles as $fileName => $stubFile) {
     echo 'Processing ', $fileName, PHP_EOL;
 
@@ -48,7 +52,7 @@ try {
     $content = file($stubFile, FILE_IGNORE_NEW_LINES);
 
     // write content to temporary file
-    fileContent($handle, $content);
+    fileContent($handle, $content, $namespace);
   }
 
   // close temporary file
@@ -56,7 +60,7 @@ try {
 
   // move temporary file to final stub file
   assert(
-    rename($tmpFile, __DIR__ . '/../phpspi.stub.php'),
+    rename($tmpFile, __DIR__ . sprintf('/../%s.stub.php', BASE_NAME)),
     new RuntimeException('Failed to write stub file!')
   );
 } catch (Exception $exception) {
@@ -65,33 +69,63 @@ try {
 
 function fileHeader($handle): void {
   fwrite($handle, '<?php');
-  fwrite($handle, "\n\n");
+  fwrite($handle, "\n");
   fwrite($handle, '/** @generate-function-entries */');
-  fwrite($handle, "\n\n");
-  fwrite($handle, 'namespace SPI;');
-  fwrite($handle, "\n\n");
+  fwrite($handle, "\n");
 }
 
-function fileContent($handle, array $content): void {
+function fileContent($handle, array $content, string &$namespace): void {
   assert(
     $content[0] === '<?php',
     new RuntimeException('Trying to process a non-php file!')
   );
 
-  $lines  = count($content);
-  $marker = false;
-  for ($i = 1; $i < $lines; $i++) {
-    if (strpos($content[$i], 'namespace') !== false) {
-      $marker = true;
+  $lineCnt = count($content);
+  $clsName = '';
+  $matches = [];
+  for ($j = 1; $j < $lineCnt; $j++) {
+    // namespace definition
+    if (preg_match('/^namespace ([a-zA-Z0-9_\\-]+);$/', $content[$j], $matches)) {
+      if ($namespace === $matches[1]) {
+        // skip "redefinition" of the same namespace
+        continue;
+      }
+
+      $namespace = $matches[1];
+      echo ' > new namespace: ', $namespace, PHP_EOL;
+      fwrite($handle, sprintf('namespace %s;', $namespace));
+      fwrite($handle, "\n");
 
       continue;
     }
 
-    if ($marker && $content[$i] !== '') {
-      break;
-    }
-  }
+    // class definition
+    if (preg_match('/^ *(abstract|final|) *class ([a-zA-Z0-9_]+)/', $content[$j], $matches)) {
+      $clsName = $matches[2];
+      echo ' > new class: ', $clsName, PHP_EOL;
+      fwrite($handle, $content[$j]);
+      fwrite($handle, "\n");
 
-  fwrite($handle, implode("\n", array_slice($content, $i)));
-  fwrite($handle, "\n\n");
+      continue;
+    }
+
+    // function definition that returns self
+    if (strpos($content[$j], 'function') !== false && strpos($content[$j], 'self') !== false) {
+      fwrite(
+        $handle,
+        str_replace(
+          '): self {',
+          sprintf('): %s {', $clsName),
+          $content[$j]
+        )
+      );
+      fwrite($handle, "\n");
+
+      continue;
+    }
+
+    // ordinary line
+    fwrite($handle, $content[$j]);
+    fwrite($handle, "\n");
+  }
 }

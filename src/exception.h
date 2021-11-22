@@ -14,15 +14,15 @@
    +----------------------------------------------------------------------+
 */
 
-#ifndef PHPSPI_EXCEPTION_H
-#define PHPSPI_EXCEPTION_H
+#ifndef SPI_EXCEPTION_H
+#define SPI_EXCEPTION_H
 
   #include "php.h"
 
   BEGIN_EXTERN_C()
 
   /* class registration */
-  extern zend_class_entry* registerExceptionClass();
+  extern zend_class_entry* registerExceptionClass(void);
 
   END_EXTERN_C()
 
