@@ -5,6 +5,11 @@ Test SPI\Bus::transfer on a MOSI->MISO jumper connected device
 if (! extension_loaded('phpspi')) {
   exit('skip');
 }
+
+// skip test if running in Continuous Integration
+if (getenv('CI') !== false) {
+  exit('skip');
+}
 ?>
 --FILE--
 <?php
