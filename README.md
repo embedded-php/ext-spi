@@ -1,4 +1,4 @@
-# phpspi
+# SPI PHP Extension
 
 The SPI PHP Extension provides an object-oriented wrapper to the
 [spidev](https://www.kernel.org/doc/Documentation/spi/spidev) Linux Kernel driver that gives users the ability to write
@@ -11,6 +11,18 @@ protocol.
 
 > **Note:** if you are using this extension on Raspbian or Raspberry Pi OS, the user executing the script **must**
 > belong to the **spi** group or you may run into "Permission denied" errors.
+
+On **Raspbian** or **Raspberry Pi OS**:
+
+**PHP 8.0**:
+```bash
+sudo apt install php8.0-cli php8.0-dev php8.0-phpdbg
+```
+
+**PHP 8.1**:
+```bash
+sudo apt install php8.1-cli php8.1-dev php8.1-phpdbg
+```
 
 ## Building
 
