@@ -253,7 +253,7 @@ PHP_METHOD(SPI_Bus, __construct) {
   busObject *self = getBusObject(Z_OBJ_P(ZEND_THIS));
 
   char device[32];
-  if (snprintf(device, sizeof(device), "/dev/spidev%d.%d", busId, chipSelect) >= 32) {
+  if (snprintf(device, sizeof(device), "/dev/spidev%ld.%ld", busId, chipSelect) >= 32) {
     zend_throw_exception_ex(zceException, 0, "The bus and/or the device number is invalid");
 
     RETURN_THROWS();
@@ -326,7 +326,7 @@ PHP_METHOD(SPI_Bus, __construct) {
 
   if (bits != test) {
     close(self->fd);
-    zend_throw_exception_ex(zceException, errno, "SPI number of bits per word mismatch: %d x %d", bits, test);
+    zend_throw_exception_ex(zceException, errno, "SPI number of bits per word mismatch: %ld x %ld", bits, test);
 
     RETURN_THROWS();
   }
@@ -353,7 +353,7 @@ PHP_METHOD(SPI_Bus, __construct) {
 
   if (speed != test) {
     close(self->fd);
-    zend_throw_exception_ex(zceException, errno, "SPI max bus speed mismatch: %d x %d", speed, test);
+    zend_throw_exception_ex(zceException, errno, "SPI max bus speed mismatch: %ld x %ld", speed, test);
 
     RETURN_THROWS();
   }
