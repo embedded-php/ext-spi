@@ -20,11 +20,11 @@
   extern zend_module_entry spi_module_entry;
   #define phpext_spi_ptr &spi_module_entry
 
-  #define PHP_SPI_EXTNAME   "phpspi"
+  #define PHP_SPI_EXTNAME   "spi"
   #define PHP_SPI_VERSION   "0.0.1-dev"
   #define PHP_SPI_AUTHOR    "flavioheleno"
-  #define PHP_SPI_URL       "https://github.com/flavioheleno/phpspi"
-  #define PHP_SPI_COPYRIGHT "Copyright (c) 2021"
+  #define PHP_SPI_URL       "https://github.com/embedded-php/ext-spi"
+  #define PHP_SPI_COPYRIGHT "Copyright (c) 2021-2022"
 
   #if defined(ZTS) && defined(COMPILE_DL_SPI)
     ZEND_TSRMLS_CACHE_EXTERN()
